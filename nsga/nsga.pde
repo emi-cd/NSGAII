@@ -16,6 +16,8 @@ final int x_num = 1;
 final int x_min = -100;          // Variable bounds
 final int x_max = 100;
 
+int generation_num = 0;
+
 List<List<Integer>> population = new ArrayList<List<Integer>>();
 List<List<Integer>> population_offspring = new ArrayList<List<Integer>>();
 
@@ -197,6 +199,35 @@ List<List<Integer>> make_new_pop(List<List<Integer>> pop){
   return ret;
 }
 
+
+void draw_graph(){
+  final int padding = 50;
+  final int axis_x = height - padding;
+  final int axis_y = padding;
+  final int zoom = 50;
+  
+  stroke(0, 0, 0);
+  strokeWeight(1);
+  line(0, axis_x, width, axis_x);
+  line(axis_y, 0, axis_y, height);
+  
+  textSize(12);
+  text("Generation: " + generation_num, width - padding*2, padding/2); 
+  generation_num++;
+  
+  strokeWeight(0.1);
+  for(int i = 0; i < height; i+=zoom){
+    line(0, i, width, i);
+  }
+  for(int i = 0; i < width; i+=zoom){
+    line(i, 0, i, height);
+  }
+  
+  strokeWeight(5);
+  for(List<Integer> arg : population)
+    point(optimize_function(arg, 1)*zoom + axis_y, axis_x - optimize_function(arg, 2)*zoom);  
+}
+
 // Main part ******************************
 
 void setup(){
@@ -221,6 +252,8 @@ void setup(){
   assert population.get(0).size() ==  x_num: "setup() : Size of Indivisual is different.";
   assert population.size() == population_size : "setup() : Size of population is different.";
   assert population_offspring.size() == population_size : "setup() : Size of population_offspring is different.";
+  
+  draw_graph();
 }
 
 void draw(){
@@ -255,9 +288,9 @@ void draw(){
   
   assert population.size() == population_size : "draw() : Size of population is different.";
   assert population_offspring.size() == population_size : "draw() : Size of population_offspring is different.";
-  //System.out.println(population);
+  System.out.println(population);
     
-  for(List<Integer> arg : population)
-    ellipse(arg.get(0) - x_min, 100, 5, 5);  
+  // Show
+  draw_graph();
   
 }
