@@ -148,8 +148,8 @@ Double[] crowding_distance_assignment(List<List<Double>> front){
 
     double f_min = optimize_function(front.get(sorted_list.get(0)), i+1);
     double f_max = optimize_function(front.get(sorted_list.get(sorted_list.size() - 1)), i+1);
-    //System.out.println("front: " + front);
-    //System.out.println("f_min: " + f_min + ", f_max: " + f_max);
+    System.out.println("front: " + front);
+    System.out.println("f_min: " + f_min + ", f_max: " + f_max);
     
     distance[sorted_list.get(0)] = Double.POSITIVE_INFINITY;                                    // so that boundary points are always selected.
     distance[sorted_list.get(sorted_list.size() - 1)] = Double.POSITIVE_INFINITY;
@@ -159,9 +159,8 @@ Double[] crowding_distance_assignment(List<List<Double>> front){
         double after_val = optimize_function(front.get(sorted_list.get(j + 1)), i+1);
         double befour_val = optimize_function(front.get(sorted_list.get(j - 1)), i+1);
         distance[j] = distance[j] + (after_val - befour_val) / (f_max - f_min);
-        System.out.print((after_val - befour_val) / (f_max - f_min) + " ");
+        System.out.print((after_val - befour_val) + " ");
       }
-      System.out.println();
     }
   }
   
