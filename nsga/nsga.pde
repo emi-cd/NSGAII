@@ -10,85 +10,62 @@ import java.util.Random;
   Please modify these parameter.
 */
 
-
-final int population_size = 10;
+final int population_size = 100;
 final int num_of_object = 2;     // The number of object;
-final int mutation_prob = 5;     // 5/10
+final int mutation_prob = 8;     // 8/10
 final int x_num = 1;
-final double x_min = -100.0d;          // Variable bounds
-final double x_max = 100.0d;
+final double x_min = -1000.0d;          // Variable bounds
+final double x_max = 1000.0d;
 
-int generation_num = 0;
-
-
-List<List<Double>> population = new ArrayList<List<Double>>();
-List<List<Double>> population_offspring = new ArrayList<List<Double>>();
-
-// Function to optimize (SCH)
-double function1(final List<Double>x){
-  return x.get(0) * x.get(0);
-}
-
-double function2(final List<Double> x){
-  return (x.get(0) - 2) * (x.get(0) - 2);
-}
-
-double optimize_function(final List<Double> x, final int i){
-  double ret = 0;
-  if(i == 1)
-    ret =  function1(x);
-  else if(i == 2)
-    ret =  function2(x);
-    
-  return ret;
-}
-
-// Whether a dominates b. Return true when a dominates b.
-boolean dominate(final List<Double> a, final List<Double> b){ 
-
-  if((optimize_function(a, 1) > optimize_function(b, 1)) || (optimize_function(a, 2) > optimize_function(b, 2)))
-    return false;
-  
-  return true;
-}
+final int zoom = 50;
 
 // ******************************************
 
-// for debug
-void print_array(final Double[] array){
-  System.out.print("Array : ");
-  for(Double arg : array){
-    System.out.print("[" + arg + "] ");
+int generation_num = 0;
+
+List<Individual> population = new ArrayList<Individual>();
+List<Individual> population_offspring = new ArrayList<Individual>();
+
+// This function is for debug.
+boolean checkFull(Individual[] ind){
+  for(Individual arg : ind){
+    if(arg == null)
+      return false;
   }
-  System.out.println();
+  return true;
 }
 
+int count_front_size(List<List<Integer>> front){
+  int counter = 0;
+  for(List<Integer> f : front){
+      counter+=f.size();
+  }
 
-
+  return counter;
+}
 
 // fast non dominated sort
-List<List<Integer>> fast_non_dominated_sort(final List<List<Double>> P){
+List<List<Integer>> fast_non_dominated_sort(List<Individual> P){
   List<List<Integer>> S = new ArrayList<List<Integer>>();
   List<List<Integer>> front = new ArrayList<List<Integer>>();
   front.add(new ArrayList<Integer>());
   int[] n = new int[P.size()];
-  int[] rank = new int[P.size()];
   
   for(int p = 0; p < P.size(); p++){
     S.add(new ArrayList<Integer>());
     n[p] = 0;
  
     for(int q = 0; q < P.size(); q++){
-      if (dominate(P.get(p), P.get(q)) && (p != q)){         // If p dominates q
-        if(!S.get(p).contains(q)) { S.get(p).add(q); }       // Add q to the set of solutions dominated by p.
-      }else if(dominate(P.get(q), P.get(p)) && (p != q)){
+      if (P.get(p).do_dominate(P.get(q)) && (p != q)){         // If p dominates q
+        S.get(p).add(q);                                       // Add q to the set of solutions dominated by p.
+      }else if(P.get(q).do_dominate(P.get(p)) && (p != q)){
         n[p]++;                                              // Increment the domination counter of p.
       }
     }
     
     if(n[p] == 0){                                           // if p belongs to the first front.
-      rank[p] = 0;
-      if(!front.get(0).contains(p)){ front.get(0).add(p); }
+      P.get(p).set_rank(0);
+      front.get(0).add(p);
     }  
   }
   
@@ -98,9 +75,9 @@ List<List<Integer>> fast_non_dominated_sort(final List<List<Double>> P){
     for(int p : front.get(i)) {
       for(int q : S.get(p)) {
         n[q] = n[q] - 1;
-        if(n[q] == 0){                                       // q belongs to the first front.
-          rank[q] = i + 1;
-          if(!Q.contains(q)) { Q.add(q); }
+        if(n[q] == 0){           // q belongs to the first front.
+          P.get(q).set_rank(i + 1);
+          Q.add(q);
         }
       }
     }
@@ -114,100 +91,119 @@ List<List<Integer>> fast_non_dominated_sort(final List<List<Double>> P){
 
 
 //Sort by values of ith optimize function.
-List<Integer> sort_by_values(final List<List<Double>> front, final int i){
-  List<Integer> sorted_list = new ArrayList<Integer>();
+Individual[] sort_by_values(final List<Individual> front, final int i){
+  Individual sorted_list[] = new Individual[front.size()];
   List<Double> value_list = new ArrayList<Double>();
-  List<Double> tmp_list = new ArrayList<Double>();
-  double val = 0;
   
-  for(List<Double> arg : front) {
-    val = optimize_function(arg, i);
-    value_list.add(val);
-    tmp_list.add(val);
-  }
-  Collections.sort(tmp_list);
-  
-  for(double t : tmp_list){
-    sorted_list.add(value_list.indexOf(t));
+  for(Individual ind : front) {
+    value_list.add(ind.get_mth_function_value(i));
   }
   
+  Collections.sort(value_list);
+  
+  for(Individual ind : front){
+    int index = value_list.indexOf(ind.get_mth_function_value(i));
+    for(;index < front.size(); index++){
+      if(sorted_list[index] == null){
+        sorted_list[index] = ind;
+        break;
+      }
+    } //<>//
+  }
+  
+  assert checkFull(sorted_list) : "sort is not good";
+
   return sorted_list;
 }
 
 
 // calculate crowding distance
-Double[] crowding_distance_assignment(List<List<Double>> front){
-  Double[] distance = new Double[front.size()];
-  List<Integer> sorted_list;
-  Arrays.fill(distance, 0.0d);                                                                  // initialize distance.
+void crowding_distance_assignment(List<Individual> front){
+  Individual[] sorted_list;
+  
+  for(Individual ind : front){
+    ind.set_distance(0.0d);                                                                     // initialize distance.
+  }
   
   for(int i = 0; i < num_of_object; i++) {
-    // Function number start from 1, so I add 1 below.
-    sorted_list = sort_by_values(front, i + 1);                                                 // sort using each objective value.
-    assert sorted_list.size() ==  front.size(): "crowding_distance_assignment() : Size of list is different";
+    sorted_list = sort_by_values(front, i);       // sort using each objective value.
+    assert sorted_list.length ==  front.size(): "crowding_distance_assignment() : Size of list is different";
 
-    double f_min = optimize_function(front.get(sorted_list.get(0)), i+1);
-    double f_max = optimize_function(front.get(sorted_list.get(sorted_list.size() - 1)), i+1);
-    System.out.println("front: " + front);
-    System.out.println("f_min: " + f_min + ", f_max: " + f_max);
+    //printIndividual(sorted_list, i);
+    double f_min = sorted_list[0].get_mth_function_value(i);
+    double f_max = sorted_list[sorted_list.length - 1].get_mth_function_value(i);
     
-    distance[sorted_list.get(0)] = Double.POSITIVE_INFINITY;                                    // so that boundary points are always selected.
-    distance[sorted_list.get(sorted_list.size() - 1)] = Double.POSITIVE_INFINITY;
+    sorted_list[0].set_distance(Double.POSITIVE_INFINITY);                                    // so that boundary points are always selected.
+    sorted_list[sorted_list.length - 1].set_distance(Double.POSITIVE_INFINITY);
     
-    for(int j = 1; j < sorted_list.size() - 1; j++) {                                           // for all other points.
-      if(f_max - f_min != 0 ){
-        double after_val = optimize_function(front.get(sorted_list.get(j + 1)), i+1);
-        double befour_val = optimize_function(front.get(sorted_list.get(j - 1)), i+1);
-        distance[j] = distance[j] + (after_val - befour_val) / (f_max - f_min);
-        System.out.print((after_val - befour_val) + " ");
+    for(int j = 1; j < sorted_list.length - 1; j++) {         // for all other points.
+      if(f_max - f_min != 0){
+        double after_val = sorted_list[j + 1].get_mth_function_value(i);
+        double befour_val = sorted_list[j - 1].get_mth_function_value(i);
+        sorted_list[j].set_distance( sorted_list[j].get_distance() + (after_val - befour_val) / (f_max - f_min));
       }
     }
   }
-  
-  print_array(distance);
-  return distance;
 }
 
+Individual tournament(Individual a, Individual b) {
+  Random rnd = new Random();
+  int flag = 0;
+  
+  if(a.do_new_dominate(b))
+    flag = 1;
+  else if(b.do_new_dominate(a))
+    flag =  0;
+  else if(rnd.nextInt(10) < 5)
+    flag =  1;
+    
+  List<Double> ret = new ArrayList<Double>();
+  if(flag == 1){
+    for(int i = 0; i < x_num; i++)
+      ret.add(a.get_ith_arg(i));
+  }else{
+    for(int i = 0; i < x_num; i++)
+      ret.add(b.get_ith_arg(i));
+  }
+
+  return new Individual(ret);
+}
+
+
 // Mutation
-List<Double> mutation(List<Double> a){
+Individual mutation(final Individual a){
   List<Double> ret = new ArrayList<Double>();
   Random rnd = new Random();
-  
+
   for(int i = 0; i < x_num; i++) {
-    if(rnd.nextInt(10) < mutation_prob)
+    if(i == rnd.nextInt(x_num))
       ret.add(rnd.nextDouble()*(x_max - x_min) + x_min);
     else
-      ret.add(a.get(i));
+      ret.add(a.get_ith_arg(i));
   }
   
-  return ret;
+  return new Individual(ret);
 }
     
     
 // Crossover
-List<Double> crossover(List<Double> a, List<Double> b){
+Individual crossover(Individual a, Individual b){
   Random rnd = new Random();
-  int index = rnd.nextInt(x_num * 2);
+  int index = rnd.nextInt(x_num*2);
   List<Double> ret = new ArrayList<Double>();
   
-  if(index < x_num){
-    for(int i = 0; i< x_num; i++) {
-      if(i == index)
-        ret.add(b.get(i));
-      else
-        ret.add(a.get(i));
-    }
-  }else{
-    for(int i = 0; i< x_num; i++) {
-      ret.add(a.get(i));
-    }
+  for(int i = 0; i< x_num; i++) {
+    if(i == index)
+      ret.add(b.get_ith_arg(i));
+    else
+      ret.add(a.get_ith_arg(i));
   }
   
-  return ret;
+  return new Individual(ret);
 }
 
 // Return index of mininum value in argument array.
-int max(final Double[] val){
+int max(final double[] val){
   int ret = 0;
   
   for(int i = 1; i < val.length; i++){
@@ -217,13 +213,17 @@ int max(final Double[] val){
   return ret;
 }
 
-// Sort by crowding distance. CAUTION : val is modified in this function!!
-List<List<Double>> new_dominate_sort(final List<List<Double>> list, Double[] val){
-  List<List<Double>> ret = new ArrayList<List<Double>>();
+// Sort by crowding distance. 
+List<Individual> new_dominate_sort(final List<Individual> list){
+  List<Individual> ret = new ArrayList<Individual>();
+  double val[] = new double[list.size()];
   
-  for(int i = 0; i < val.length; i++){
+  for(int i = 0; i < list.size(); i++)
+    val[i] = list.get(i).get_distance();
+  
+  for(int i = 0; i < list.size(); i++){
     int index = max(val);
-    val[index] = -1.0d;
+    val[index] = Double.NEGATIVE_INFINITY;
     ret.add(list.get(index));
   }
   
@@ -232,19 +232,42 @@ List<List<Double>> new_dominate_sort(final List<List<Double>> list, Double[] val
 }
 
 // Execute crossover and mutation. Make offspring from pop.
-List<List<Double>> make_new_pop(final List<List<Double>> pop){
-  List<List<Double>> ret = new ArrayList<List<Double>>();
+List<Individual> selection(final List<Individual> pop){
+  List<Individual> ret = new ArrayList<Individual>();
+  
+  List<Individual> pop_tmp1 = pop;
+  List<Individual> pop_tmp2 = pop;
+  Individual parent1, parent2;
   Random rnd = new Random();
   
-  Double[] val = crowding_distance_assignment(pop);
-  List<List<Double>> tmp = new_dominate_sort(pop, val);
-  ret.addAll(tmp.subList(0, population_size/3));
-  
-  for(int i = 0; i < pop.size()-i; i++){
-    ret.add(crossover(pop.get(i), pop.get(pop.size()-i - 1)));
+  for(int i = 0; i < pop.size(); i++){
+    int r = rnd.nextInt(pop.size()- i) + i;
+    Individual tmp = pop_tmp1.get(r);
+    pop_tmp1.set(r, pop_tmp1.get(i));
+    pop_tmp1.set(i, tmp);
+    
+    r = rnd.nextInt(pop.size()- i) + i;
+    tmp = pop_tmp2.get(r);
+    pop_tmp2.set(r, pop_tmp2.get(i));
+    pop_tmp2.set(i, tmp);
+    
   }
-  while(ret.size() < pop.size()){
-    ret.add(mutation(pop.get(rnd.nextInt(pop.size()))));
+  
+  for(int i = 0; i < pop.size(); i+=4){
+    parent1 = tournament(pop_tmp1.get(i), pop_tmp1.get(i+1));
+    parent2 = tournament(pop_tmp1.get(i+2), pop_tmp1.get(i+3));
+    ret.add(tournament(parent1, parent2));
+    ret.add(crossover(parent1, parent2));
+    
+    parent1 = tournament(pop_tmp2.get(i), pop_tmp2.get(i+1));
+    parent2 = tournament(pop_tmp2.get(i+2), pop_tmp2.get(i+3));
+    ret.add(tournament(parent1, parent2));
+    ret.add(crossover(parent1, parent2));
+  }
+  
+  for(int i = 0; i < pop.size(); i++) {
+    if(rnd.nextInt(10) < mutation_prob)
+      ret.set(i, mutation(ret.get(i)));
   }
   
   assert ret.size() == population_size : "make_new_pop() : Size of ret list is different.";
@@ -257,7 +280,6 @@ void draw_graph(){
   final int padding = 50;
   final int axis_x = height - padding;
   final int axis_y = padding;
-  final int zoom = 5;
   
   stroke(0, 0, 0);
   strokeWeight(1);
@@ -265,7 +287,7 @@ void draw_graph(){
   line(axis_y, 0, axis_y, height);
   
   textSize(12);
-  text("Generation: " + generation_num, width - padding*2, padding/2); 
+  text("Generation: " + generation_num, width - padding*2.5, padding/2); 
   generation_num++;
   
   strokeWeight(0.1);
@@ -277,8 +299,8 @@ void draw_graph(){
   }
   
   strokeWeight(5);
-  for(List<Double> arg : population)
-    point((float)(optimize_function(arg, 1)*zoom + axis_y), (float)(axis_x - optimize_function(arg, 2)*zoom));  
+  for(Individual ind : population)
+    point((float)(ind.get_mth_function_value(0)*zoom + axis_y), (float)(axis_x - ind.get_mth_function_value(1)*zoom));  
 }
 
 // Main part ******************************
@@ -287,67 +309,62 @@ void setup(){
   size(500, 500);
   noStroke();
   fill(0, 102, 153, 204);
-  frameRate(2);
+  //frameRate(1);
   
   // Initialization of population.
   Random rnd = new Random();
   for(int i = 0; i < population_size; i++){
-    List<Double> indivisual = new ArrayList<Double>();
-    for(int j = 0; j < x_num; j++) {
-      double val = rnd.nextDouble()*(x_max - x_min) + x_min;
-      indivisual.add(val);
+    List<Double> tmp = new ArrayList<Double>();
+    for(int j = 0; j < x_num; j++){
+      tmp.add(rnd.nextDouble()*(x_max - x_min) + x_min);
     }
-    population.add(indivisual);
+    population.add(new Individual(tmp));
   }
   
   // Make offspring population.
-  population_offspring = make_new_pop(population);
+  population_offspring = selection(population);
+  population.addAll(population_offspring);                                   // combine parent and offspring population.
   
-  assert population.get(0).size() ==  x_num: "setup() : Size of Indivisual is different.";
-  assert population.size() == population_size : "setup() : Size of population is different.";
-  assert population_offspring.size() == population_size : "setup() : Size of population_offspring is different.";
-
+  assert population.size() == population_size * 2 : "setup() : Size of population is different.";
 }
 
 
 
 void draw(){
   background(255);
-  List<List<Double>> next_p = new ArrayList<List<Double>>();                 // indivisual = [1.1d, 3.8d, ...], population = [indivisual1, indivisual2, ...]
+  List<Individual> next_p = new ArrayList<Individual>();                 // Individual = [1.1d, 3.8d, ...], population = [Individual1, Individual2, ...]
   
-  population.addAll(population_offspring);                                   // combine parent and offspring population.
   assert population.size() == population_size * 2 : "draw() : Size of population + population_offspring is different.";
   List<List<Integer>> front = fast_non_dominated_sort(population);           // front = (f_0, f_1, ...). f_0 = [index_number_of_population, ...]
+  assert count_front_size(front) == population_size*2 : "fast_non_dominated_sort have some problem";
   
   int i = 0;
   while(next_p.size() + front.get(i).size() <= population_size){             // until the parent population is filled.
-    List<List<Double>> tmp = new ArrayList<List<Double>>();
+    List<Individual> tmp = new ArrayList<Individual>();
     for(int index : front.get(i)){
       tmp.add(population.get(index));
     }
     
+    crowding_distance_assignment(tmp);
     next_p.addAll(tmp);                                                      // include ith nondominated front in the parent pop.
     i++;                                                                     // check the next front for inclusion.
   }
   
-  List<List<Double>> tmp = new ArrayList<List<Double>>();
+  List<Individual> tmp = new ArrayList<Individual>();
   for(int index : front.get(i)){
     tmp.add(population.get(index));
   }
   
-  Double[] val = crowding_distance_assignment(tmp);
-  tmp = new_dominate_sort(tmp, val);
+  crowding_distance_assignment(tmp);
+  tmp = new_dominate_sort(tmp);
   next_p.addAll(tmp.subList(0, population_size - next_p.size()));
   
-  population_offspring = make_new_pop(next_p);
+  population_offspring = selection(next_p);
   population = next_p;
+  population.addAll(population_offspring);                                   // combine parent and offspring population.
   
-  
-  assert population.size() == population_size : "draw() : Size of population is different.";
-  assert population_offspring.size() == population_size : "draw() : Size of population_offspring is different.";
-  //System.out.println("population: " + population);
-  //System.out.println("offspring: " + population_offspring + "¥n");
+  assert population.size() == population_size * 2 : "draw() : Size of population is different.";
     
-  draw_graph();                                                              // show results.
-  
+  draw_graph();     // show results.
+  saveFrame("frames/####.tif");
 }
